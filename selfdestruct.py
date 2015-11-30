@@ -28,11 +28,15 @@ def check_temp():
     for (permalink, expires) in c.fetchall():
         if datetime.now() >= datetime.fromtimestamp(expires):
             submission = r.get_submission(permalink)
-            print "Removing thread '%s' posted by /u/%s" % (submission.title, submission.author)
-            submission.remove()
+            try:
+                print "Removing thread '%s' posted by /u/%s" % (submission.title, submission.author)
+                submission.remove()
 
-            c.execute("DELETE FROM temp WHERE link=?", (permalink,))
-            conn.commit()
+                c.execute("DELETE FROM temp WHERE link=?", (permalink,))
+                conn.commit()
+            except Exception, e:
+                # if any errors occur while attempting to remove the thread (HTTP or otherwise), try again next loop.
+                pass
 
 def add_to_remove_list(submission, expires):
     if c.execute("SELECT link FROM temp WHERE link=?", (submission.permalink,)).fetchone() == None:
@@ -53,13 +57,23 @@ titles = ["tarla", "turmac"]
 
 # clear_temp_table()
 while True:
-    for submission in subreddits.get_new(limit=25):
-        # checks and balances
-        if (submission.url in expires_at_next_hour or any(url in submission.selftext for url in expires_at_next_hour)) and any(name in submission.title.lower() for name in titles):
-            expires = next_hour(submission.created_utc)
-            add_to_remove_list(submission, expires)
+    try:
+        for submission in subreddits.get_new(limit=25):
+            # checks and balances
+            if (submission.url in expires_at_next_hour or any(url in submission.selftext for url in expires_at_next_hour)) and any(name in submission.title.lower() for name in titles):
+                expires = next_hour(submission.created_utc)
+                add_to_remove_list(submission, expires)
 
-    check_temp()
-
-    for _ in range(60):
-        time.sleep(1)
+        check_temp()
+    except urllib2.HTTPError, e:
+        if e.code in [429, 500, 502, 503, 504]:
+            print "reddit is down, error %s!" % e.code # no biggie, just wait until next loop
+            pass
+        else:
+            print "reddit broke"
+            raise
+    except Exception, e:
+        print "Something, but still possibly reddit broke."
+        raise
+        
+    time.sleep(60)
