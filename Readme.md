@@ -1,4 +1,4 @@
-# SelfDestructBot
+# Self-Destruct Bot
 
 A reddit bot that runs on your moderator account that removes posts after a set amount of time, though you need to implement the conditionals yourself. I left my working example, though it's rather ugly.
 
@@ -15,5 +15,4 @@ _you'll know where this goes when you look at selfdestruct.py_
                 # expires = hours_later(submission.created_utc, 3) # alternatively, 3 hours after the post was made
                 add_to_remove_list(submission, expires)
         check_temp() # where the magic happens
-        for _ in range(60): # sleep for a minute. This is going forever, so it's a good idea.
-            time.sleep(1)
+        time.sleep(60) # sleep for a minute. This is going forever, so it's a good idea.
