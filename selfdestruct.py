@@ -1,4 +1,4 @@
-import os, praw, sqlite3, time
+import os, praw, sqlite3, time, urllib2
 from datetime import datetime, date, timedelta
 import Config
 
