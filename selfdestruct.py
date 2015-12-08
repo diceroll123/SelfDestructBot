@@ -73,7 +73,7 @@ while True:
             print "reddit broke"
             raise
     except Exception, e:
-        print "Something, but still possibly reddit broke."
-        raise
+        print "ERROR: ", e
+        pass
         
     time.sleep(60)
