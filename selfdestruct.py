@@ -1,4 +1,4 @@
-import os, praw, sqlite3, time, urllib2
+import os, praw, sqlite3, time
 from datetime import datetime, date, timedelta
 import Config
 
@@ -65,13 +65,6 @@ while True:
                 add_to_remove_list(submission, expires)
 
         check_temp()
-    except urllib2.HTTPError, e:
-        if e.code in [429, 500, 502, 503, 504]:
-            print "reddit is down, error %s!" % e.code # no biggie, just wait until next loop
-            pass
-        else:
-            print "reddit broke"
-            raise
     except Exception, e:
         print "ERROR: ", e
         pass
