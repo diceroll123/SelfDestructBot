@@ -1,72 +1,82 @@
-import os, praw, sqlite3, time
+import praw
+import time
+import sqlite3
 from datetime import datetime, date, timedelta
 import Config
 
-# sqlite
-conn = sqlite3.connect(Config.database_location)
-c = conn.cursor()
+class SelfDestruct:
+  def __init__(self):
+    self.conn = sqlite3.connect(Config.database_location)
+    self.c = self.conn.cursor()
 
-r = praw.Reddit(user_agent='Post Self-Destruct (Auto-Remove) by /u/diceroll123')
-print "Self-Destruct bot Logging in..."
-r.login(Config.reddit_username, Config.reddit_password, disable_warning=True)
-subreddits = r.get_subreddit(Config.subreddits)
-
-def next_hour(timestamp): # returns timestamp of the nearest next hour
+  @staticmethod
+  def next_hour(timestamp): # returns timestamp of the nearest next hour
     original = datetime.fromtimestamp(int(timestamp))
     nearest_hour = original + timedelta(hours=1) - timedelta(minutes=original.minute, seconds=original.second, microseconds=original.microsecond)
     return int(time.mktime(nearest_hour.timetuple()))
 
-def hours_later(timestamp, hours): # returns timestamp X hours after the post was made
+  @staticmethod
+  def hours_later(timestamp, hours): # returns timestamp X hours after the post was made
     original = datetime.fromtimestamp(int(timestamp))
     hours_later = original + timedelta(hours=hours)
     return int(time.mktime(hours_later.timetuple()))
 
-##### main functions
+  ##### main functions
 
-def check_temp():
-    c.execute('SELECT * from temp')
-    for (permalink, expires) in c.fetchall():
-        if datetime.now() >= datetime.fromtimestamp(expires):
-            submission = r.get_submission(permalink)
-            try:
-                print "Removing thread '%s' posted by /u/%s" % (submission.title, submission.author)
-                submission.remove()
+  def check_temp(self):
+    self.c.execute('SELECT * from temp')
+    for (permalink, expires) in self.c.fetchall():
+      if datetime.now() >= datetime.fromtimestamp(expires):
+        submission = r.submission(id=permalink)
+        try:
+          print(f'Removing thread \'{submission.title}\' posted by /u/{submission.author}')
+          submission.mod.remove()
 
-                c.execute("DELETE FROM temp WHERE link=?", (permalink,))
-                conn.commit()
-            except Exception, e:
-                # if any errors occur while attempting to remove the thread (HTTP or otherwise), try again next loop.
-                pass
+          self.c.execute('DELETE FROM temp WHERE link=?', (permalink,))
+          self.conn.commit()
+        except Exception as e:
+          print(e)
+          # if any errors occur while attempting to remove the thread (HTTP or otherwise), try again next loop.
+          pass
 
-def add_to_remove_list(submission, expires):
-    if c.execute("SELECT link FROM temp WHERE link=?", (submission.permalink,)).fetchone() == None:
-        c.execute('INSERT INTO temp(link, expires) VALUES (?, ?)', (submission.permalink, expires,))
-        print "Added '%s' to temp" % submission.title
+  def add_to_remove_list(self, submission, expires):
+    if self.c.execute('SELECT link FROM temp WHERE link=?', (submission.id,)).fetchone() == None:
+      self.c.execute('INSERT INTO temp(link, expires) VALUES (?, ?)', (submission.id, expires,))
+      print(f'Added \'{submission.title}\' to temp')
+      self.conn.commit()
 
-        conn.commit()
+  # debugging function(s) below
+  def clear_temp_table(self):
+    self.c.execute('DELETE FROM temp')
+    self.conn.commit()
 
-# debugging function(s) below
-def clear_temp_table():
-    c.execute("DELETE FROM temp")
-    conn.commit()
+r = praw.Reddit('neopetsbot', user_agent='Automatically removes "expired" posts from /r/neopets. Maintained by /u/diceroll123.')
 
-##### main code
-
+selfdestruct = SelfDestruct()
+# selfdestruct.clear_temp_table()
 expires_at_next_hour = ['http://www.neopets.com/freebies/tarlastoolbar.phtml', 'http://www.neopets.com/medieval/turmaculus.phtml']
-titles = ["tarla", "turmac"]
+titles = ['tarla', 'turmac', 'turmy']
+buried_treasure = 'http://www.neopets.com/pirates/buriedtreasure/buriedtreasure.phtml?'
 
-# clear_temp_table()
+print('Logged in and awaiting subreddit stream.')
+
+sub_stream = r.subreddit('neopets').stream.submissions(pause_after=3)
+
 while True:
-    try:
-        for submission in subreddits.get_new(limit=25):
-            # checks and balances
-            if (submission.url in expires_at_next_hour or any(url in submission.selftext for url in expires_at_next_hour)) and any(name in submission.title.lower() for name in titles):
-                expires = next_hour(submission.created_utc)
-                add_to_remove_list(submission, expires)
+  try:
+    for submission in sub_stream:
+      if submission is None:
+        break # checking time!
 
-        check_temp()
-    except Exception, e:
-        print "ERROR: ", e
-        pass
-        
-    time.sleep(60)
+      if submission.approved_by == None: # meaning...it won't possibly be removed. (again)
+        if (submission.url in expires_at_next_hour or any(url in submission.selftext for url in expires_at_next_hour)) and any(name in submission.title.lower() for name in titles):
+          expires = SelfDestruct.next_hour(submission.created_utc)
+          selfdestruct.add_to_remove_list(submission, expires)
+
+        if (buried_treasure in submission.url or buried_treasure in submission.selftext):
+          expires = SelfDestruct.hours_later(submission.created_utc, 1)
+          selfdestruct.add_to_remove_list(submission, expires)
+    selfdestruct.check_temp()
+  except Exception as e:
+    print(e)
+    pass
